@@ -196,7 +196,7 @@ st.dataframe(cap[[
 # PUSHOVER
 # ---------------------------------------------------------
 
-st.header("7. Pushover Curve")
+st.header("7. Pushover Curve + Tabulation")
 
 Vy = cap["Vy_storey"].to_numpy()
 
@@ -204,17 +204,59 @@ pattern = masses * phi[:, 0]
 pattern = pattern / np.sum(pattern)
 
 V = np.linspace(0, min(Vy)*1.5, 50)
+
 delta = []
+yielded_storeys = []
 
 for vb in V:
     d = 0
+    y_count = 0
+    
     for i in range(n):
         shear = vb * np.sum(pattern[i:])
+        
         if shear < Vy[i]:
             d += shear / k[i]
         else:
+            y_count += 1
             d += Vy[i]/k[i] + (shear - Vy[i])/(0.05*k[i])
+    
     delta.append(d)
+    yielded_storeys.append(y_count)
+
+# ---------------------------------------------------------
+# CREATE TABLE
+# ---------------------------------------------------------
+
+push_df = pd.DataFrame({
+    "Step": np.arange(1, len(V)+1),
+    "Base Shear (kN)": V,
+    "Roof Displacement (m)": delta,
+    "Yielded Storeys": yielded_storeys
+})
+
+# Add drift ratio
+H_total = cap["Storey_height_m"].sum()
+push_df["Drift Ratio"] = push_df["Roof Displacement (m)"] / H_total
+
+# ---------------------------------------------------------
+# DISPLAY TABLE
+# ---------------------------------------------------------
+
+st.subheader("Pushover Result Table")
+
+st.dataframe(
+    push_df.style.format({
+        "Base Shear (kN)": "{:,.2f}",
+        "Roof Displacement (m)": "{:.4f}",
+        "Drift Ratio": "{:.4%}"
+    }),
+    use_container_width=True
+)
+
+# ---------------------------------------------------------
+# PLOT
+# ---------------------------------------------------------
 
 st.pyplot(plot_xy(delta, V, "Pushover Curve"))
 
