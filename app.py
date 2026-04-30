@@ -1,8 +1,5 @@
 
 import io
-import math
-from dataclasses import dataclass
-
 import matplotlib
 matplotlib.use("Agg")  # Streamlit Cloud-safe backend
 
@@ -10,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from scipy.linalg import eigh
 
 G = 9.80665
 
@@ -122,14 +118,44 @@ def parse_matrix(text, n, default_matrix):
 
 @st.cache_data(show_spinner=False)
 def eig_analysis_cached(M_tuple, K_tuple):
+    """
+    Cloud-safe generalized eigenvalue solution without SciPy.
+
+    Solves:
+        K phi = w^2 M phi
+
+    by converting to:
+        inv(M) K phi = w^2 phi
+
+    This is acceptable for this teaching/reconciliation app because M is diagonal
+    from storey masses. For final design, verify using structural software.
+    """
     M = np.array(M_tuple, dtype=float)
     K = np.array(K_tuple, dtype=float)
 
-    w2, phi = eigh(K, M)
+    if M.shape[0] != M.shape[1] or K.shape[0] != K.shape[1]:
+        raise ValueError("M and K must be square matrices.")
 
-    keep = w2 > 1e-9
+    if M.shape != K.shape:
+        raise ValueError("M and K must have the same shape.")
+
+    if np.any(np.diag(M) <= 0):
+        raise ValueError("All storey masses must be positive.")
+
+    # More stable than explicitly using np.linalg.inv(M) @ K
+    A = np.linalg.solve(M, K)
+
+    w2_raw, phi_raw = np.linalg.eig(A)
+
+    w2 = np.real_if_close(w2_raw, tol=1000).astype(float)
+    phi = np.real_if_close(phi_raw, tol=1000).astype(float)
+
+    keep = np.isfinite(w2) & (w2 > 1e-9)
     w2 = w2[keep]
     phi = phi[:, keep]
+
+    if len(w2) == 0:
+        raise ValueError("No positive eigenvalues found. Check mass and stiffness inputs.")
 
     order = np.argsort(w2)
     w2 = w2[order]
